@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/graphql-config@4.3.6/config-schema.json",
+  "schema": "node_modules/@octokit/graphql-schema/schema.graphql",
+  "documents": ["src/**/*.ts"],
+  "extensions": {
+    "codegen": {
+      "generates": {
+        "./src/gql/": {
+          "documents": ["!src/gql/**/*"],
+          "preset": "gql-tag-operations-preset",
+          "config": {
+            "useTypeImports": true
+          }
+        }
+      }
+    }
+  }
+}

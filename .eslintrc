@@ -1,0 +1,28 @@
+{
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended",
+        "prettier"
+    ],
+    "overrides": [
+        {
+            "files": [
+                "./src/**/*.ts"
+            ],
+            "processor": "@graphql-eslint/graphql"
+        },
+        {
+            "files": [
+                "*.graphql"
+            ],
+            "parserOptions": {
+                "operations": "*.graphql",
+                "schema": "node_modules/@octokit/graphql-schema/schema.graphql"
+            },
+            "extends": "plugin:@graphql-eslint/operations-recommended"
+        }
+    ],
+    "ignorePatterns": [
+        "src/gql"
+    ]
+}
