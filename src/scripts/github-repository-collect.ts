@@ -80,6 +80,7 @@ const main = async () => {
           name
         }
         nameWithOwner
+        name
       }
 
       fragment SearchRepositoryResultItem on SearchResultItem {
