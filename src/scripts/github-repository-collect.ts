@@ -112,6 +112,13 @@ const main = async () => {
 
   // write files to a file
   await writeFile(join(process.cwd(), 'files.json'), JSON.stringify(files))
+
+  // Show Summary of number of files and repositories
+  const repositoryCount = new Set(files.map((f) => f.repository.nameWithOwner))
+  const fileCount = files.length
+  console.log(
+    `Found ${fileCount} files in ${repositoryCount.size} repositories`,
+  )
 }
 
 main()
