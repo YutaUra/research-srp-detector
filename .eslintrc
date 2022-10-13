@@ -23,6 +23,7 @@
         }
     ],
     "ignorePatterns": [
-        "src/gql"
+        "src/gql",
+        "tmp"
     ]
 }

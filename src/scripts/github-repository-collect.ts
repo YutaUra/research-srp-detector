@@ -10,6 +10,7 @@ import type {
   SearchRepositoryFragment,
   SearchRepositoryResultItemFragment,
 } from '../gql/graphql'
+import hash from 'node-object-hash'
 
 config()
 
@@ -23,12 +24,15 @@ const client = new GraphQLClient('https://api.github.com/graphql', {
 
 const SEARCH_QUERY = `license:mit "using express" language:TypeScript language:JavaScript size:<5000 stars:>10`
 
-type File = {
+export type File = {
   repository: SearchRepositoryFragment
   path: string
   name: string
   content: string
+  id: string
 }
+
+const hasher = hash({ sort: true, coerce: true })
 
 const readFiles = async (
   node: SearchRepositoryResultItemFragment | null,
@@ -52,11 +56,15 @@ const readFiles = async (
   return await Promise.all(
     filenames.map(async (filename) => {
       const content = await readFile(filename, 'utf8')
-      return {
+      const file = {
         repository: node,
         path: filename.replace(cloneDir, ''),
         name: basename(filename),
         content,
+      }
+      return {
+        ...file,
+        id: hasher.hash(file),
       }
     }),
   )

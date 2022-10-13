@@ -2,3 +2,5 @@ node_modules
 src/gql
 .env
 files.json
+functions.json
+tmp
