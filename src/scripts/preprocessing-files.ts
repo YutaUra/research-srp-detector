@@ -172,11 +172,16 @@ ${file.content}`
   const functions = nonMinifiedFiles.flatMap(({ id: _, ...file }) => {
     const functionCodes = splitFileByFunction(file)
     return functionCodes.map((content) => {
-      const code = {}
+      const code: Omit<FunctionCode, 'id'> = {
+        repository: file.repository,
+        path: file.path,
+        name: file.name,
+        content,
+      }
 
       return {
-        ...file,
-        content,
+        ...code,
+        id: hasher.hash(code),
       }
     })
   })
