@@ -1,13 +1,9 @@
-import { readFile, writeFile } from 'fs/promises'
-import { join } from 'path'
-import type { File } from './github-repository-collect'
 import { parse } from '@babel/parser'
-import traverse, { NodePath } from '@babel/traverse'
 import generator from '@babel/generator'
-import type { Statement, Expression, Node } from '@babel/types'
+import type { Statement, Expression } from '@babel/types'
 import { isExpression } from 'babel-types'
 import type { SearchRepositoryFragment } from '../gql/graphql'
-import hash from 'node-object-hash'
+import { File, PrismaClient, Repository } from '@prisma/client'
 
 const isClassOrFunctionExpress = (node: Expression): boolean => {
   switch (node.type) {
@@ -58,66 +54,29 @@ const isNotNodeModules = (file: File): boolean => {
   return !file.path.startsWith('/node_modules')
 }
 
-const removeSiblingFunctions = (path: NodePath<Node>): Node => {
-  const siblings = path.getAllNextSiblings().concat(path.getAllPrevSiblings())
-  siblings.forEach((v) => {
-    // if (v.isStatement() && isClassOrFunctionStatement(v.node)) {
-    v.remove()
-    // }
-  })
-  if (!path.parentPath) {
-    return path.node
-  }
-  return removeSiblingFunctions(path.parentPath)
-}
-
 const splitFileByFunction = (
-  file: Pick<File, 'content' | 'repository' | 'path'>,
+  file: File & {
+    repository: Repository
+  },
 ): string[] => {
   try {
     const ast = parse(file.content, {
       sourceType: 'module',
       plugins: ['typescript', 'jsx', 'decorators-legacy'],
     })
-    let key = ''
-    const functionKeys: string[] = []
 
-    traverse(ast, {
-      Statement(path) {
-        if (isClassOrFunctionStatement(path.node)) {
-          functionKeys.push(key)
-        }
-      },
-      enter(path) {
-        key += `/${path.type}[${path.key}]`
-      },
-      exit() {
-        key = key.slice(0, key.lastIndexOf('/'))
-      },
-    })
+    const header = `/**
+ * Repository: ${file.repository.author}/${file.repository.name}
+ * Path: ${file.path}
+ * File: ${file.name}
+ */
 
-    return functionKeys.map((functionKey) => {
-      let key2 = ''
-      const ast = parse(file.content, {
-        sourceType: 'module',
-        plugins: ['typescript', 'jsx', 'decorators-legacy'],
-      })
+`
 
-      traverse(ast, {
-        enter(path) {
-          key2 += `/${path.type}[${path.key}]`
+    return ast.program.body.filter(isClassOrFunctionStatement).map((stmt) => {
+      const code = generator(stmt).code
 
-          if (key2 === functionKey) {
-            removeSiblingFunctions(path)
-          }
-        },
-        exit() {
-          key2 = key2.slice(0, key2.lastIndexOf('/'))
-        },
-      })
-
-      const { code } = generator(ast)
-      return code
+      return `${header}${code}`
     })
   } catch (e) {
     console.error(`Error parsing file: ${makeFilename(file)}. Skipping...`)
@@ -125,11 +84,15 @@ const splitFileByFunction = (
   }
 }
 
-const makeFilename = (file: Pick<File, 'repository' | 'path'>): string => {
-  return `${file.repository.nameWithOwner.replace(
+const makeFilename = (
+  file: File & {
+    repository: Repository
+  },
+): string => {
+  return `${file.repository.author}-${file.repository.name}-${file.path.replace(
     /\//g,
     '-',
-  )}-${file.path.replace(/\//g, '-')}`
+  )}`
 }
 
 export type FunctionCode = {
@@ -141,9 +104,16 @@ export type FunctionCode = {
 }
 
 const main = async () => {
-  const files = JSON.parse(
-    await readFile(join(process.cwd(), 'files.json'), 'utf8'),
-  ) as File[]
+  const prisma = new PrismaClient()
+
+  // delete all functions
+  await prisma.function.deleteMany()
+
+  const files = await prisma.file.findMany({
+    include: {
+      repository: true,
+    },
+  })
 
   console.log('Files count: ' + files.length)
 
@@ -154,46 +124,25 @@ const main = async () => {
   console.log(`Found ${nonMinifiedFiles.length} non-minified files`)
 
   for (const file of nonMinifiedFiles) {
-    const content = `/**
-* File: ${file.name}
-* Path: ${file.path}
-* Repository: ${file.repository.nameWithOwner}
-*/
-
-${file.content}`
-    // create file name with repository name and path
-    const fileName = makeFilename(file)
-
-    await writeFile(join(process.cwd(), 'tmp', fileName), content)
+    const codes = splitFileByFunction(file)
+    for (const code of codes) {
+      try {
+        await prisma.function.create({
+          data: {
+            content: code,
+            fileId: file.id,
+          },
+        })
+      } catch {
+        // pass
+      }
+    }
   }
 
-  // split files into function definitions
-  const hasher = hash({ sort: true, coerce: true })
-  const functions = nonMinifiedFiles.flatMap(({ id: _, ...file }) => {
-    const functionCodes = splitFileByFunction(file)
-    return functionCodes.map((content) => {
-      const code: Omit<FunctionCode, 'id'> = {
-        repository: file.repository,
-        path: file.path,
-        name: file.name,
-        content,
-      }
+  const functionsCount = await prisma.function.count()
+  const fileCount = await prisma.file.count()
 
-      return {
-        ...code,
-        id: hasher.hash(code),
-      }
-    })
-  })
-
-  await writeFile(join(process.cwd(), 'functions.json'), JSON.stringify(files))
-
-  // Show Summary of number of functions and files
-  const fileCount = new Set(
-    functions.map((f) => `${f.repository.nameWithOwner}/${f.path}`),
-  )
-  const functionsCount = functions.length
-  console.log(`Found ${functionsCount} functions in ${fileCount.size} files`)
+  console.log(`Found ${functionsCount} functions in ${fileCount} files`)
 }
 
 main()

@@ -4,3 +4,4 @@ src/gql
 files.json
 functions.json
 tmp
+data.db*

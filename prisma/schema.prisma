@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data.db"
+}
+
+model Repository {
+  id         String  @id
+  author     String
+  name       String
+  license    String?
+  url        String
+  commitHash String?
+
+  files File[]
+
+  @@unique([author, name, commitHash])
+}
+
+model File {
+  id           String @id @default(cuid())
+  repositoryId String
+  path         String
+  name         String
+  content      String
+
+  repository Repository @relation(fields: [repositoryId], references: [id])
+  functions  Function[]
+
+  @@unique([repositoryId, path])
+}
+
+model Function {
+  id      String @id @default(cuid())
+  fileId  String
+  content String
+
+  file File @relation(fields: [fileId], references: [id])
+
+  @@unique([fileId, content])
+}

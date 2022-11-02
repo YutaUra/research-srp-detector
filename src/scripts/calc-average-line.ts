@@ -1,11 +1,9 @@
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import type { File } from './github-repository-collect'
+import { PrismaClient } from '@prisma/client'
 
 const main = async () => {
-  const files = JSON.parse(
-    await readFile(join(process.cwd(), 'files.json'), 'utf8'),
-  ) as File[]
+  const prisma = new PrismaClient()
+
+  const files = await prisma.file.findMany({})
 
   const lines: number[] = []
 

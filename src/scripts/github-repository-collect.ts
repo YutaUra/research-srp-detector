@@ -3,14 +3,11 @@ import { config } from 'dotenv'
 import { gql } from '../gql'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { mkdtemp, rm, readFile, writeFile } from 'fs/promises'
+import { mkdtemp, rm, readFile } from 'fs/promises'
 import { join, basename } from 'path'
 import { tmpdir } from 'os'
-import type {
-  SearchRepositoryFragment,
-  SearchRepositoryResultItemFragment,
-} from '../gql/graphql'
-import hash from 'node-object-hash'
+import type { SearchRepositoryResultItemFragment } from '../gql/graphql'
+import { PrismaClient } from '@prisma/client'
 
 config()
 
@@ -24,20 +21,10 @@ const client = new GraphQLClient('https://api.github.com/graphql', {
 
 const SEARCH_QUERY = `license:mit "using express" language:TypeScript language:JavaScript size:<5000 stars:>10`
 
-export type File = {
-  repository: SearchRepositoryFragment
-  path: string
-  name: string
-  content: string
-  id: string
-}
-
-const hasher = hash({ sort: true, coerce: true })
-
 const readFiles = async (
   node: SearchRepositoryResultItemFragment | null,
   dir: string,
-): Promise<File[]> => {
+) => {
   if (node?.__typename !== 'Repository') {
     return []
   }
@@ -56,21 +43,24 @@ const readFiles = async (
   return await Promise.all(
     filenames.map(async (filename) => {
       const content = await readFile(filename, 'utf8')
-      const file = {
+      return {
         repository: node,
         path: filename.replace(cloneDir, ''),
         name: basename(filename),
         content,
-      }
-      return {
-        ...file,
-        id: hasher.hash(file),
       }
     }),
   )
 }
 
 const main = async () => {
+  const prisma = new PrismaClient()
+
+  // delete all repositories
+  await prisma.function.deleteMany()
+  await prisma.file.deleteMany()
+  await prisma.repository.deleteMany()
+
   const res = await client.request(
     gql(/* GraphQL */ `
       query SearchRepositories($query: String!) {
@@ -82,6 +72,7 @@ const main = async () => {
       }
 
       fragment SearchRepository on Repository {
+        id
         url
         licenseInfo {
           url
@@ -89,6 +80,16 @@ const main = async () => {
         }
         nameWithOwner
         name
+        owner {
+          login
+        }
+        defaultBranchRef {
+          target {
+            ... on Commit {
+              oid
+            }
+          }
+        }
       }
 
       fragment SearchRepositoryResultItem on SearchResultItem {
@@ -119,8 +120,35 @@ const main = async () => {
   await rm(dir, { recursive: true })
   console.log(`Removed ${dir} Completely`)
 
-  // write files to a file
-  await writeFile(join(process.cwd(), 'files.json'), JSON.stringify(files))
+  // save to database
+  for (const file of files) {
+    const commit =
+      file.repository.defaultBranchRef?.target?.__typename === 'Commit'
+        ? (file.repository.defaultBranchRef?.target?.oid as string)
+        : null
+    await prisma.file.create({
+      data: {
+        content: file.content,
+        name: file.name,
+        path: file.path,
+        repository: {
+          connectOrCreate: {
+            where: {
+              id: file.repository.id,
+            },
+            create: {
+              id: file.repository.id,
+              license: file.repository.licenseInfo?.name,
+              author: file.repository.owner.login,
+              url: file.repository.url,
+              name: file.repository.name,
+              commitHash: commit,
+            },
+          },
+        },
+      },
+    })
+  }
 
   // Show Summary of number of files and repositories
   const repositoryCount = new Set(files.map((f) => f.repository.nameWithOwner))

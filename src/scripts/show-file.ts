@@ -1,20 +1,27 @@
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import type { File } from './github-repository-collect'
+import { File, PrismaClient, Repository } from '@prisma/client'
 
-const showFile = (file: File) => {
+const showFile = (
+  file: File & {
+    repository: Repository
+  },
+) => {
   console.log(file.content)
   console.log(`---
 name: ${file.name}
 path: ${file.path}
-repository: ${file.repository.nameWithOwner}
+repository: ${file.repository.author}/${file.repository.name}
 ---`)
 }
 
 const main = async () => {
-  const files = JSON.parse(
-    await readFile(join(process.cwd(), 'files.json'), 'utf8'),
-  ) as File[]
+  const prisma = new PrismaClient()
+
+  const files = await prisma.file.findMany({
+    take: 100,
+    include: {
+      repository: true,
+    },
+  })
 
   for (const file of files) {
     if (file.content.length > 3000) {
