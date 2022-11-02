@@ -107,6 +107,7 @@ const main = async () => {
   const prisma = new PrismaClient()
 
   // delete all functions
+  await prisma.annotation.deleteMany()
   await prisma.function.deleteMany()
 
   const files = await prisma.file.findMany({

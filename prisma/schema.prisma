@@ -41,7 +41,16 @@ model Function {
   fileId  String
   content String
 
-  file File @relation(fields: [fileId], references: [id])
+  file       File        @relation(fields: [fileId], references: [id])
+  annotation Annotation?
 
   @@unique([fileId, content])
+}
+
+model Annotation {
+  id           String  @id @default(cuid())
+  functionId   String  @unique
+  isFulfillSRP Boolean
+
+  function Function @relation(fields: [functionId], references: [id])
 }
